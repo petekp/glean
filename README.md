@@ -45,12 +45,26 @@ available, prefer it.
 Run with no arguments to capture interactively — same crosshair as ⌘⇧4, including
 Space to toggle window-selection mode.
 
-Pass an image path to skip the capture and OCR an existing file instead, which is
-also the easiest way to test:
+Pass an image path to OCR an existing file instead of capturing:
 
 ```sh
-glean ~/Desktop/screenshot.png && pbpaste
+glean ~/Desktop/screenshot.png
 ```
+
+The text goes to the clipboard *and* to stdout, always — the clipboard is what you
+want from a hotkey, stdout is what you want from a shell, and writing both costs
+nothing:
+
+```sh
+glean | grep ERROR
+```
+
+Indentation is preserved. Vision reports lines, not columns, so `glean`
+reconstructs leading whitespace from each line's measured x-offset and snaps it to
+the narrowest indent present — 2-space and 4-space source both come back at their
+true width, and code pastes without repair. Captures that aren't a stacked block of
+text (a menu bar, a toolbar, side-by-side columns) are left flush, since a large
+x-offset there means "further right on the same line", not "indented".
 
 ## Feedback
 
@@ -60,11 +74,22 @@ glean ~/Desktop/screenshot.png && pbpaste
 | Funk | Capture worked, but Vision found no text |
 | *silence* | You pressed Escape |
 
-## Two settings worth explaining
+## Three settings worth explaining
+
+Measured on a rendered 8-line Python screenshot, scoring whole lines including
+indentation.
+
+**Upscale ~3x before recognizing.** Vision is trained on document-scale text and
+reads screen-scale text noticeably worse — at native size it turns `log.warn(x)`
+into `1og warn(x)` and sprays spaces around punctuation. Resampling first took
+exact lines from **5/8 to 7/8**. Capturing at Retina resolution is not a
+substitute: a true @2x render still scored 5/8. The gain comes from resampling
+before recognition, not from source detail.
 
 **`usesLanguageCorrection = false`.** Screenshots are mostly code, paths, and error
 strings. With correction on, Vision's language model "fixes" `oncomplete]` into
-`oncompletel` and quietly mangles identifiers. Off, transcription is literal.
+`oncompletel` and quietly mangles identifiers — it scored **4/8**, worse than
+leaving it off. Transcription should be literal.
 
 **`minimumTextHeight = 0`.** The default is 1/32 of the *image* height, so a tall
 selection containing normal-sized text returns nothing at all — no error, no
@@ -73,8 +98,12 @@ Vision, start here.
 
 ## Known limits
 
-- Leading indentation is not preserved; Vision reports lines, not columns.
+- The last stubborn error is glyph ambiguity: `log` still reads as `1og` in some
+  monospace fonts. Vision cannot separate lowercase L from digit 1 without a
+  language model, and enabling that model costs more than it fixes.
 - Multi-column layouts are read in Vision's reading order, which can interleave.
+- Indentation is reconstructed, not recovered — it is inferred from pixel offsets
+  and can be off in unusual fonts.
 - English only. Add to `recognitionLanguages` for others.
 
 ## Requirements
