@@ -16,15 +16,29 @@ swiftc -O glean.swift -o glean
 cp glean ~/.local/bin/glean
 ```
 
-Then bind a hotkey. The path of least resistance is an Automator Quick Action
-(**no input**, **any application**) containing a single *Run Shell Script* step:
+Then bind a hotkey.
+
+### Raycast (recommended)
+
+Copy the script command and point Raycast at it:
 
 ```sh
-exec ~/.local/bin/glean
+mkdir -p ~/.raycast-scripts
+cp raycast/glean-text.sh ~/.raycast-scripts/
 ```
 
-Save it to `~/Library/Services/`, then assign a key in
-**System Settings → Keyboard → Keyboard Shortcuts → Services**.
+**Raycast Settings → Extensions → Script Commands → Add Directories →**
+`~/.raycast-scripts`, then assign a hotkey to **Glean Text**.
+
+### Automator Quick Action (no Raycast)
+
+Create a Quick Action (**no input**, **any application**) with one *Run Shell
+Script* step running `exec ~/.local/bin/glean`, save to `~/Library/Services/`,
+and assign a key in **System Settings → Keyboard → Keyboard Shortcuts → Services**.
+
+Be warned that Services shortcuts fail silently and lose to any running app
+holding the same key, with no indication of the conflict. If a hotkey manager is
+available, prefer it.
 
 ## Usage
 
