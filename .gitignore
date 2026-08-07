@@ -1,0 +1,4 @@
+glean
+*.o
+.DS_Store
+.circuit/
