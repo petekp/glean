@@ -1,12 +1,13 @@
 # glean
 
-⌘⇧4 for text. Drag a region of the screen, and the text inside it lands on your clipboard.
+⌘⇧4 for text. Drag a region of the screen; the text inside it lands on your
+clipboard with its indentation intact.
 
 No dependencies, no network, no API keys — just `screencapture` and Apple's Vision
 framework, both of which ship with macOS. OCR runs entirely on-device.
 
 ```
-⌘⇧1  →  crosshair  →  drag  →  chime  →  ⌘V
+hotkey  →  crosshair  →  drag  →  chime  →  ⌘V
 ```
 
 ## Install
