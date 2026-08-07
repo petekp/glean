@@ -10,6 +10,8 @@ framework, both of which ship with macOS. OCR runs entirely on-device.
 hotkey  →  crosshair  →  drag  →  chime  →  ⌘V
 ```
 
+A panel shows you what landed on the clipboard, its glyphs riding a wave.
+
 ## Install
 
 ```sh
@@ -57,7 +59,7 @@ want from a hotkey, stdout is what you want from a shell, and writing both costs
 nothing:
 
 ```sh
-glean | grep ERROR
+glean --no-hud | grep ERROR
 ```
 
 Indentation is preserved. Vision reports lines, not columns, so `glean`
@@ -69,11 +71,37 @@ x-offset there means "further right on the same line", not "indented".
 
 ## Feedback
 
-| Sound | Meaning |
-|---|---|
-| Glass | Text recognized and copied |
-| Funk | Capture worked, but Vision found no text |
-| *silence* | You pressed Escape |
+After a capture, a HUD panel fades in over whatever you were looking at, shows the
+first few lines of the copied text, and fades out. It never takes focus and never
+swallows a click.
+
+| Sound | Panel | Meaning |
+|---|---|---|
+| Funk | the text | Text recognized and copied |
+| Basso | *No text found* | Capture worked, but Vision found no text |
+| *silence* | — | You pressed Escape |
+
+The confirmation is the low, soft one on purpose — it's the sound you hear all day.
+Swap either via `copiedSound` / `emptySound` in `glean.swift`; any name from
+`/System/Library/Sounds` works.
+
+Up to four lines are shown, each trimmed to 64 columns, with `+N more lines` when
+there is more. It keeps the capture's own line breaks rather than re-wrapping, so
+code stays indented and prose still breaks where it broke on screen. The knobs —
+line count, width, wave amplitude, speed, timings — are the `HUD` constants at the
+top of the HUD section in `glean.swift`.
+
+`--no-hud` suppresses the panel for scripting:
+
+```sh
+glean --no-hud ~/Desktop/screenshot.png | grep ERROR
+```
+
+Showing this in the launcher instead was tried and doesn't work. Raycast's silent
+mode renders only the **last** line of stdout, so capturing a paragraph flashed its
+closing fragment and nothing else — feedback that looks like a bug even when the
+copy was perfect. The bundled script command sends stdout to `/dev/null` so the two
+HUDs don't stack.
 
 ## Three settings worth explaining
 

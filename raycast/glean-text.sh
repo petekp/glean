@@ -13,4 +13,8 @@
 
 # `mode: silent` keeps Raycast's window from stealing focus or covering the
 # screen you are about to select from — the crosshair needs an unobstructed view.
-exec "$HOME/.local/bin/glean"
+#
+# stdout goes to /dev/null because in silent mode Raycast pops its own HUD showing
+# the *last* line of it — so a captured paragraph flashed its closing fragment and
+# nothing else. glean draws its own panel now; this keeps the two from stacking.
+exec "$HOME/.local/bin/glean" >/dev/null

@@ -8,6 +8,7 @@
 
 import AppKit
 import Foundation
+import QuartzCore
 import Vision
 
 let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -18,11 +19,17 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
+var arguments = Array(CommandLine.arguments.dropFirst())
+// The HUD is the point of the tool from a hotkey and pure noise from a pipe, so
+// it is on by default and switched off explicitly.
+let wantsHUD = !arguments.contains("--no-hud")
+arguments.removeAll { $0 == "--no-hud" }
+
 // An explicit path argument OCRs an existing image instead of capturing —
 // handy for testing the recognition path without the crosshair.
 let source: URL
-if CommandLine.arguments.count > 1 {
-    source = URL(fileURLWithPath: CommandLine.arguments[1])
+if let path = arguments.first {
+    source = URL(fileURLWithPath: path)
     guard FileManager.default.fileExists(atPath: source.path) else { fail("no such file") }
 } else {
     // -x suppresses the camera shutter sound; we play our own on success instead.
@@ -158,10 +165,232 @@ func indented(_ lines: [Line], _ boxes: [CGRect]) -> [String] {
 
 let text = indented(lines, lines.map(\.box)).joined(separator: "\n")
 
-guard !text.isEmpty else {
-    NSSound(named: "Funk")?.play()
-    Thread.sleep(forTimeInterval: 0.4)  // NSSound is async; process exit would cut it off
+// MARK: - The HUD
+//
+// A chime tells you *that* something was copied; it cannot tell you *what*. The
+// obvious place to show that is the launcher — but Raycast's HUD renders only the
+// last line of stdout, so capturing a paragraph flashed its closing fragment and
+// nothing else, which reads like a bug even when the copy was perfect.
+//
+// So glean draws its own panel. That buys three things the launcher could not give
+// us: the *beginning* of the text rather than its tail, several lines instead of
+// one, and identical feedback from Raycast, a Quick Action, or a bare shell.
+
+// Measured dominant pitch of the system sounds: Funk ~324 Hz, Basso ~440, Glass
+// ~831. Glass reads as a bright chime and Funk as a soft thump an octave-and-a-third
+// below it. The copy confirmation is the one you hear all day, so it takes the lower,
+// less insistent sound. Basso is only a fifth above Funk but percussive rather than
+// synthetic, so the two never blur together.
+let copiedSound = "Funk"
+let emptySound = "Basso"
+
+enum HUD {
+    static let maxLines = 4        // source lines shown before we summarize the rest
+    static let maxColumns = 64     // characters per line before the ellipsis
+    static let fontSize: CGFloat = 14
+
+    // The wave. Amplitude and wavelength are in glyphs and points; `speed` is
+    // radians per second. Wider wavelength reads as a swell, tighter as a jitter.
+    static let amplitude: CGFloat = 3.2
+    static let wavelength = 7.0    // glyphs per full cycle
+    static let speed = 6.0
+
+    static let fadeIn = 0.18
+    static let hold = 1.75
+    static let fadeOut = 0.32
+}
+
+struct HUDLine {
+    let text: String
+    let dim: Bool  // the "+N more" summary is chrome, not content
+}
+
+/// Trim one source line to the HUD's width, breaking on a word when one is near
+/// the cut so the preview doesn't end mid-identifier.
+func clamped(_ line: String, to limit: Int) -> String {
+    var line = line
+    while line.hasSuffix(" ") || line.hasSuffix("\t") { line.removeLast() }
+    guard line.count > limit else { return line }
+
+    let cut = line.prefix(limit - 1)
+    if let space = cut.lastIndex(of: " "), cut.distance(from: space, to: cut.endIndex) < 12 {
+        return cut[..<space] + "…"
+    }
+    return cut + "…"
+}
+
+/// The copied text, reduced to something readable at a glance.
+///
+/// Vision returns one observation per *visual* line, so keeping that structure
+/// costs nothing and preserves the shape of what you grabbed — code stays indented,
+/// prose still breaks where it broke on screen. Re-wrapping would destroy both.
+func hudLines(for text: String) -> [HUDLine] {
+    var lines = text.components(separatedBy: "\n")
+    while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+
+    var out = lines.prefix(HUD.maxLines).map { HUDLine(text: clamped($0, to: HUD.maxColumns), dim: false) }
+    let hidden = lines.count - out.count
+    if hidden > 0 {
+        out.append(HUDLine(text: "+\(hidden) more line\(hidden == 1 ? "" : "s")", dim: true))
+    }
+    return out
+}
+
+/// Draws each glyph itself so it can ride a travelling sine wave.
+///
+/// The phase advances per glyph across the whole block rather than per line, so the
+/// crest runs through the text as one continuous ripple instead of restarting at
+/// every left margin. Spaces still consume a phase step — dropping them would make
+/// the wave stutter across word gaps.
+final class WaveTextView: NSView {
+    private let lines: [HUDLine]
+    private let font = NSFont.monospacedSystemFont(ofSize: HUD.fontSize, weight: .medium)
+    private let start = CACurrentMediaTime()
+
+    init(lines: [HUDLine]) {
+        self.lines = lines
+        super.init(frame: .zero)
+        frame = NSRect(origin: .zero, size: intrinsicContentSize)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var isFlipped: Bool { true }
+
+    // Normal leading plus room for the wave: without it a crest on one line and a
+    // trough on the line above collide, and the block reads as one smeared mass.
+    private var lineHeight: CGFloat {
+        (font.ascender - font.descender + font.leading).rounded() + HUD.amplitude * 1.75
+    }
+
+    private func attributes(dim: Bool) -> [NSAttributedString.Key: Any] {
+        [.font: font, .foregroundColor: NSColor.white.withAlphaComponent(dim ? 0.45 : 0.95)]
+    }
+
+    /// Measured the same way it is drawn — per character, no kerning — so the panel
+    /// is exactly as wide as the glyphs that land in it.
+    private func width(of line: HUDLine) -> CGFloat {
+        let attrs = attributes(dim: line.dim)
+        return line.text.reduce(0) { $0 + String($1).size(withAttributes: attrs).width }
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: (lines.map(width(of:)).max() ?? 0).rounded(.up),
+               height: lineHeight * CGFloat(lines.count))
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let elapsed = CACurrentMediaTime() - start
+        // Ease the amplitude in, or the text pops into motion at full swing.
+        let swell = min(1, elapsed / HUD.fadeIn)
+        let step = 2 * Double.pi / HUD.wavelength
+
+        var glyph = 0
+        for (row, line) in lines.enumerated() {
+            let attrs = attributes(dim: line.dim)
+            var x: CGFloat = 0
+            let baseline = CGFloat(row) * lineHeight
+
+            for character in line.text {
+                let piece = String(character)
+                let advance = piece.size(withAttributes: attrs).width
+                if character != " " {
+                    let offset = HUD.amplitude * swell * CGFloat(sin(elapsed * HUD.speed - Double(glyph) * step))
+                    piece.draw(at: CGPoint(x: x, y: baseline + offset), withAttributes: attrs)
+                }
+                x += advance
+                glyph += 1
+            }
+        }
+    }
+}
+
+/// Show the panel, run the animation, then exit. Never returns.
+func showHUD(_ lines: [HUDLine], sound: String) -> Never {
+    let app = NSApplication.shared
+    // .accessory keeps us out of the Dock and the ⌘-Tab switcher; a bare
+    // command-line binary would otherwise be .prohibited and unable to show a window.
+    app.setActivationPolicy(.accessory)
+
+    let text = WaveTextView(lines: lines)
+    let padding = NSSize(width: 22, height: 16)
+    // The wave lifts glyphs past their layout box, so the panel has to reserve room
+    // for a full crest at the top and a full trough at the bottom.
+    let size = NSSize(width: text.frame.width + padding.width * 2,
+                      height: text.frame.height + padding.height * 2 + HUD.amplitude * 2)
+
+    let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main!
+    let visible = screen.visibleFrame  // excludes the Dock and menu bar
+    let origin = NSPoint(x: (visible.midX - size.width / 2).rounded(),
+                         y: (visible.minY + visible.height * 0.13).rounded())
+
+    let panel = NSPanel(contentRect: NSRect(origin: origin, size: size),
+                        styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
+    panel.isFloatingPanel = true
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.hasShadow = true
+    panel.ignoresMouseEvents = true          // never intercept a click meant for the app below
+    panel.level = .screenSaver               // above full-screen apps and other floating panels
+    panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+    panel.appearance = NSAppearance(named: .vibrantDark)  // a HUD is dark in either system theme
+    panel.alphaValue = 0
+
+    // The blur is a *subview* of a plain host, never the panel's contentView. In the
+    // contentView role AppKit dresses an NSVisualEffectView in window chrome: a 1px
+    // light stroke on the window's square bounds, which sits outside our rounded
+    // corners and reads as a stray border. Demoting it keeps the material and drops
+    // the chrome. The stroke survives dropping the vibrantDark appearance and
+    // vanishes the moment the effect view stops being the contentView, so the
+    // content-view role is the trigger — not the appearance, not the corner radius.
+    let host = NSView(frame: NSRect(origin: .zero, size: size))
+
+    let backdrop = NSVisualEffectView(frame: host.bounds)
+    backdrop.material = .hudWindow
+    backdrop.blendingMode = .behindWindow
+    backdrop.state = .active
+    backdrop.wantsLayer = true
+    backdrop.layer?.cornerRadius = 14
+    backdrop.layer?.masksToBounds = true
+
+    text.setFrameOrigin(NSPoint(x: padding.width, y: padding.height + HUD.amplitude))
+    backdrop.addSubview(text)
+    host.addSubview(backdrop)
+    panel.contentView = host
+    panel.orderFrontRegardless()  // show without stealing focus from the frontmost app
+
+    NSSound(named: sound)?.play()
+
+    NSAnimationContext.runAnimationGroup { context in
+        context.duration = HUD.fadeIn
+        panel.animator().alphaValue = 1
+    }
+
+    let frame = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { _ in
+        text.needsDisplay = true
+    }
+    // The wave keeps running through the fade — freezing it first reads as a stall.
+    Timer.scheduledTimer(withTimeInterval: HUD.fadeIn + HUD.hold, repeats: false) { _ in
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = HUD.fadeOut
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            frame.invalidate()
+            exit(0)
+        })
+    }
+
+    app.run()
     exit(0)
+}
+
+guard !text.isEmpty else {
+    guard wantsHUD else {
+        NSSound(named: emptySound)?.play()
+        Thread.sleep(forTimeInterval: 0.4)  // NSSound is async; process exit would cut it off
+        exit(0)
+    }
+    showHUD([HUDLine(text: "No text found", dim: false)], sound: emptySound)
 }
 
 let pasteboard = NSPasteboard.general
@@ -175,5 +404,9 @@ pasteboard.setString(text, forType: .string)
 // that captures output, which is precisely the case that matters most.
 print(text)
 
-NSSound(named: "Glass")?.play()
-Thread.sleep(forTimeInterval: 0.4)
+guard wantsHUD else {
+    NSSound(named: copiedSound)?.play()
+    Thread.sleep(forTimeInterval: 0.4)
+    exit(0)
+}
+showHUD(hudLines(for: text), sound: copiedSound)
