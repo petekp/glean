@@ -1,6 +1,6 @@
 # glean
 
-⌘⇧4 for text. Drag a region of the screen; the text inside it lands on your
+Drag a region of the screen; the text inside it lands on your
 clipboard with its indentation intact.
 
 No dependencies, no network, no API keys — just `screencapture` and Apple's Vision
