@@ -6,8 +6,9 @@ clipboard with its indentation intact.
 No dependencies, no network, no API keys — just `screencapture` and Apple's Vision
 framework, both of which ship with macOS. OCR runs entirely on-device.
 
+How it works
 ```
-hotkey  →  crosshair  →  drag  →  chime  →  ⌘V
+use hotkey  →  get usual MacOS screenshot crosshair  →  drag to select text  →  text OCR'd and copied to clipboard  →  paste somewhere
 ```
 
 A panel shows you what landed on the clipboard, its glyphs riding a wave.
