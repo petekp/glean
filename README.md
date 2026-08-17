@@ -6,14 +6,19 @@ clipboard with its indentation intact.
 No dependencies, no network, no API keys — just `screencapture` and Apple's Vision
 framework, both of which ship with macOS. OCR runs entirely on-device.
 
-How it works
-```
-use hotkey  →  get usual MacOS screenshot crosshair  →  drag to select text  →  text OCR'd and copied to clipboard  →  paste somewhere
-```
+### How it works
 
-A panel shows you what landed on the clipboard, its glyphs riding a wave.
+1. Use hotkey. I like ⌘⇧1.
+2. Native MacOS crosshairs appear
+3. Drag and release on any on-screen text
+4. Text is OCR'ed and copied to your clipboard
+5. Paste text
+
+A fun little panel will appear at the bottom of your screen to indicate you what was copied.
 
 ## Install
+
+I'd personally just point Claude at this github page, but if you want to do it manually:
 
 ```sh
 swiftc -O glean.swift -o glean
@@ -33,8 +38,6 @@ cp raycast/glean-text.sh ~/.raycast-scripts/
 
 **Raycast Settings → Extensions → Script Commands → Add Directories →**
 `~/.raycast-scripts`, then assign a hotkey to **Glean Text**.
-
-I like using ⌘⇧1.
 
 ### Automator Quick Action (no Raycast)
 
