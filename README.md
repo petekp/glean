@@ -60,9 +60,7 @@ Pass an image path to OCR an existing file instead of capturing:
 glean ~/Desktop/screenshot.png
 ```
 
-The text goes to the clipboard *and* to stdout, always — the clipboard is what you
-want from a hotkey, stdout is what you want from a shell, and writing both costs
-nothing:
+The text goes to the clipboard *and* to stdout.
 
 ```sh
 glean --no-hud | grep ERROR
@@ -75,11 +73,10 @@ true width, and code pastes without repair. Captures that aren't a stacked block
 text (a menu bar, a toolbar, side-by-side columns) are left flush, since a large
 x-offset there means "further right on the same line", not "indented".
 
-## Feedback
+## Post-Capture Feedback
 
 After a capture, a HUD panel fades in over whatever you were looking at, shows the
-first few lines of the copied text, and fades out. It never takes focus and never
-swallows a click.
+first few lines of the copied text, and fades out.
 
 | Sound | Panel | Meaning |
 |---|---|---|
