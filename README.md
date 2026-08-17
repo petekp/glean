@@ -10,7 +10,7 @@ framework, both of which ship with macOS. OCR runs entirely on-device.
 
 1. Use hotkey. I like ⌘⇧1.
 2. Native MacOS crosshairs appear
-3. Drag and release on any on-screen text
+3. Drag and release on any on-screen text, or press `Space` to select the whole screen
 4. Text is OCR'ed and copied to your clipboard
 5. Paste text
 
