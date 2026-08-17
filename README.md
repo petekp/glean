@@ -33,6 +33,8 @@ cp raycast/glean-text.sh ~/.raycast-scripts/
 **Raycast Settings → Extensions → Script Commands → Add Directories →**
 `~/.raycast-scripts`, then assign a hotkey to **Glean Text**.
 
+I like using ⌘⇧1.
+
 ### Automator Quick Action (no Raycast)
 
 Create a Quick Action (**no input**, **any application**) with one *Run Shell
